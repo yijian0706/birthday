@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#06060c" />
   <title>Happy Birthday, Ong Jing Hong</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Nunito:wght@400;600&display=swap" rel="stylesheet" />
@@ -13,11 +14,11 @@
       --muted: rgba(241, 236, 255, .55);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; }
+    html, body { height: 100%; height: 100dvh; overflow: hidden; overscroll-behavior: none; }
     body { background: var(--bg); color: var(--ink); font-family: "Nunito", system-ui, sans-serif; }
     canvas { display: block; touch-action: none; }
     .sign {
-      position: fixed; right: max(16px, 5vw); bottom: max(16px, 4vh);
+      position: fixed; right: max(16px, 5vw); bottom: max(16px, 4vh, env(safe-area-inset-bottom));
       font-family: "Great Vibes", cursive; font-size: clamp(1.6rem, 4.5vw, 2.8rem);
       color: var(--ink); opacity: .8; pointer-events: none;
       text-shadow: 0 0 18px rgba(196, 170, 255, .6);
@@ -27,15 +28,28 @@
       font-size: .85rem; color: var(--muted); pointer-events: none; transition: opacity .8s;
     }
     button.relight {
-      position: fixed; left: 16px; bottom: max(16px, 4vh);
+      position: fixed; left: 16px; bottom: max(16px, 4vh, env(safe-area-inset-bottom));
       padding: .6em 1.2em; border: 1px solid rgba(241,236,255,.35); border-radius: 999px;
       background: rgba(20, 18, 40, .6); color: var(--ink); font: 600 .9rem "Nunito", sans-serif;
       cursor: pointer; display: none; backdrop-filter: blur(6px);
     }
+    /* Phones / portrait: big centered greeting under the cake, hint above it */
+    @media (max-aspect-ratio: 4/5) {
+      .sign {
+        left: 16px; right: 16px; bottom: max(28px, 5dvh, env(safe-area-inset-bottom));
+        text-align: center; line-height: 1.05; font-size: clamp(2.4rem, 12vw, 3.6rem); opacity: .92;
+      }
+      .sign span { display: block; }
+      .sign #name { font-size: 1.15em; }
+      .hint, button.relight {
+        left: 50%; transform: translateX(-50%); max-width: none; white-space: nowrap;
+        bottom: calc(max(28px, 5dvh, env(safe-area-inset-bottom)) + clamp(6rem, 30vw, 9rem));
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="sign" id="sign">happy birthday, Ong Jing Hong</div>
+  <div class="sign"><span>happy birthday,</span> <span id="name">Ong Jing Hong</span></div>
   <p class="hint" id="hint">Drag to turn · tap the cake to make a wish</p>
   <button class="relight" id="relight">Light the candle again</button>
 
@@ -55,7 +69,7 @@
 
     // Default name is Ong Jing Hong; ?name=Alice in the URL overrides it
     const name = new URLSearchParams(location.search).get("name");
-    if (name) document.getElementById("sign").textContent = `happy birthday, ${name}`;
+    if (name) document.getElementById("name").textContent = name;
 
     const rand = (a, b) => a + Math.random() * (b - a);
     const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -73,20 +87,28 @@
     scene.background = new THREE.Color(0x06060c);
 
     const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
-    const target = new THREE.Vector3(0, 2.1, 0);
-    function placeCamera() {
-      const dist = camera.aspect < 0.8 ? 14 : 11.5;
-      camera.position.set(0, 3.9, dist);
+    const target = new THREE.Vector3();
+    const viewDir = new THREE.Vector3(0, 0.16, 1).normalize();
+    // Fit the cake to the screen: on wide screens fit its height, on phones fit its width
+    // so the cake fills the screen and the light ribbons spill off the edges like the painting.
+    function fitCamera() {
+      const portrait = camera.aspect < 0.8;
+      const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      const halfH = 3.5, halfW = portrait ? 2.25 : 3.4;
+      const dist = Math.max(halfH / tan, halfW / (tan * camera.aspect));
+      target.set(0, portrait ? 1.35 : 2.1, 0);   // lower target lifts the cake, leaving room for the greeting
+      camera.position.copy(target).addScaledVector(viewDir, dist);
       camera.lookAt(target);
+      return dist;
     }
-    placeCamera();
+    let fitDist = fitCamera();
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.copy(target);
     controls.enableDamping = true;
     controls.enablePan = false;
-    controls.minDistance = 6;
-    controls.maxDistance = 20;
+    controls.minDistance = fitDist * 0.6;
+    controls.maxDistance = fitDist * 1.5;
     controls.minPolarAngle = Math.PI * 0.2;
     controls.maxPolarAngle = Math.PI * 0.55;
 
@@ -435,15 +457,16 @@
     }
 
     // dots float around the cake, denser in the upper-left like the painting
-    const bokeh = pointCloud(190, () => {
-      if (Math.random() < 0.35) return new THREE.Vector3(rand(-5.5, -1.5), rand(3, 6.5), rand(-2, 1.5));
+    // (spread tall enough to fill a phone screen top to bottom)
+    const bokeh = pointCloud(260, () => {
+      if (Math.random() < 0.3) return new THREE.Vector3(rand(-5.5, -1.5), rand(3, 7.5), rand(-2, 1.5));
       const a = rand(0, Math.PI * 2), r = rand(2.4, 5.5);
-      return new THREE.Vector3(Math.cos(a) * r, rand(-0.5, 6.8), Math.sin(a) * r * 0.8);
+      return new THREE.Vector3(Math.cos(a) * r, rand(-3.5, 8.5), Math.sin(a) * r * 0.8);
     }, () => (Math.random() < 0.85 ? rand(0.04, 0.11) : rand(0.14, 0.26)), () => pick(DOT_COLORS), THREE.NormalBlending);
 
-    const dust = pointCloud(700, () => {
+    const dust = pointCloud(950, () => {
       const a = rand(0, Math.PI * 2), r = rand(1.2, 5);
-      return new THREE.Vector3(Math.cos(a) * r, rand(0, 5.5), Math.sin(a) * r);
+      return new THREE.Vector3(Math.cos(a) * r, rand(-3, 8), Math.sin(a) * r);
     }, () => rand(0.012, 0.035), () => pick(["#c9a24a", "#b8913c", "#d8d0f0", "#8f80c8"]), THREE.AdditiveBlending);
 
     const sparkleTex = sparkleTexture();
@@ -451,7 +474,7 @@
     for (let i = 0; i < 14; i++) {
       const s = sprite(sparkleTex, 0.25, 0.25, 0.9);
       const a = rand(0, Math.PI * 2), r = rand(2.5, 6);
-      s.position.set(Math.cos(a) * r, rand(0.5, 6), Math.sin(a) * r);
+      s.position.set(Math.cos(a) * r, rand(-2.5, 8), Math.sin(a) * r);
       s.userData = { base: rand(0.12, 0.3), phase: rand(0, 10) };
       scene.add(s);
       sparkles.push(s);
@@ -474,6 +497,10 @@
     addEventListener("resize", () => {
       camera.aspect = innerWidth / innerHeight;
       camera.updateProjectionMatrix();
+      fitDist = fitCamera();
+      controls.target.copy(target);
+      controls.minDistance = fitDist * 0.6;
+      controls.maxDistance = fitDist * 1.5;
       renderer.setSize(innerWidth, innerHeight);
       composer.setSize(innerWidth, innerHeight);
       updatePointScale();

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Happy Birthday</title>
+  <title>Happy Birthday, Ong Jing Hong</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Nunito:wght@400;600&display=swap" rel="stylesheet" />
   <style>
@@ -35,7 +35,7 @@
   </style>
 </head>
 <body>
-  <div class="sign" id="sign">happy birthday</div>
+  <div class="sign" id="sign">happy birthday, Ong Jing Hong</div>
   <p class="hint" id="hint">Drag to turn · tap the cake to make a wish</p>
   <button class="relight" id="relight">Light the candle again</button>
 
@@ -53,7 +53,7 @@
     import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
     import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
-    // ?name=Alice  ->  "happy birthday, Alice"
+    // Default name is Ong Jing Hong; ?name=Alice in the URL overrides it
     const name = new URLSearchParams(location.search).get("name");
     if (name) document.getElementById("sign").textContent = `happy birthday, ${name}`;
 

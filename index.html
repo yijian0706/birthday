@@ -3,52 +3,41 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Happy Birthday!</title>
+  <title>Happy Birthday</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Nunito:wght@400;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Nunito:wght@400;600&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg-top: #2a1446;
-      --bg-bottom: #0d0718;
-      --ink: #fff4e6;
-      --accent: #ffb84d;
+      --bg: #06060c;
+      --ink: #f1ecff;
+      --muted: rgba(241, 236, 255, .55);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; }
-    body {
-      background: radial-gradient(ellipse at 50% 30%, var(--bg-top), var(--bg-bottom) 70%);
-      color: var(--ink);
-      font-family: "Nunito", system-ui, sans-serif;
-    }
+    body { background: var(--bg); color: var(--ink); font-family: "Nunito", system-ui, sans-serif; }
     canvas { display: block; touch-action: none; }
-    .title {
-      position: fixed; top: 6vh; left: 0; right: 0;
-      text-align: center; pointer-events: none;
-      font-family: "Pacifico", cursive;
-      font-size: clamp(2rem, 7vw, 4.5rem);
-      text-shadow: 0 0 24px rgba(255, 184, 77, .55);
-    }
-    .title small {
-      display: block; font-family: "Nunito", sans-serif; font-weight: 700;
-      font-size: clamp(1rem, 3vw, 1.5rem); color: var(--accent); margin-top: .25em;
+    .sign {
+      position: fixed; right: max(16px, 5vw); bottom: max(16px, 4vh);
+      font-family: "Great Vibes", cursive; font-size: clamp(1.6rem, 4.5vw, 2.8rem);
+      color: var(--ink); opacity: .8; pointer-events: none;
+      text-shadow: 0 0 18px rgba(196, 170, 255, .6);
     }
     .hint {
-      position: fixed; bottom: 4vh; left: 16px; right: 16px;
-      text-align: center; opacity: .75; font-size: .95rem; pointer-events: none;
-      transition: opacity .6s;
+      position: fixed; left: 16px; bottom: max(16px, 4vh); max-width: 46vw;
+      font-size: .85rem; color: var(--muted); pointer-events: none; transition: opacity .8s;
     }
     button.relight {
-      position: fixed; bottom: 4vh; left: 50%; transform: translateX(-50%);
-      padding: .7em 1.4em; border: 0; border-radius: 999px;
-      background: var(--accent); color: #2a1446; font: 700 1rem "Nunito", sans-serif;
-      cursor: pointer; display: none;
+      position: fixed; left: 16px; bottom: max(16px, 4vh);
+      padding: .6em 1.2em; border: 1px solid rgba(241,236,255,.35); border-radius: 999px;
+      background: rgba(20, 18, 40, .6); color: var(--ink); font: 600 .9rem "Nunito", sans-serif;
+      cursor: pointer; display: none; backdrop-filter: blur(6px);
     }
   </style>
 </head>
 <body>
-  <h1 class="title">Happy Birthday<small id="name"></small></h1>
-  <p class="hint" id="hint">Drag to spin the cake · Click the cake to blow out the candles 🎂</p>
-  <button class="relight" id="relight">Light the candles again</button>
+  <div class="sign" id="sign">happy birthday</div>
+  <p class="hint" id="hint">Drag to turn · tap the cake to make a wish</p>
+  <button class="relight" id="relight">Light the candle again</button>
 
   <script type="importmap">
     { "imports": {
@@ -59,194 +48,474 @@
   <script type="module">
     import * as THREE from "three";
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+    import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+    import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+    import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
-    // Name shown under the title: use ?name=Alice in the URL, or edit the fallback here.
-    const params = new URLSearchParams(location.search);
-    document.getElementById("name").textContent = params.get("name") || "";
+    // ?name=Alice  ->  "happy birthday, Alice"
+    const name = new URLSearchParams(location.search).get("name");
+    if (name) document.getElementById("sign").textContent = `happy birthday, ${name}`;
 
-    // ---------- Scene ----------
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const DOT_COLORS = ["#f4b942", "#5ec8f2", "#ef6f91", "#8ee3c8", "#ffffff", "#f08a4b", "#7c6cf0", "#4f7dff"];
+
+    // ---------- Renderer / scene ----------
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.95;
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 100);
-    camera.position.set(0, 4.2, 9.5);
+    scene.background = new THREE.Color(0x06060c);
+
+    const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
+    const target = new THREE.Vector3(0, 2.1, 0);
+    function placeCamera() {
+      const dist = camera.aspect < 0.8 ? 14 : 11.5;
+      camera.position.set(0, 3.9, dist);
+      camera.lookAt(target);
+    }
+    placeCamera();
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 1.4, 0);
+    controls.target.copy(target);
     controls.enableDamping = true;
     controls.enablePan = false;
-    controls.minDistance = 5;
-    controls.maxDistance = 16;
-    controls.maxPolarAngle = Math.PI * 0.49;
-    controls.autoRotate = true;          // the cake turns by itself
-    controls.autoRotateSpeed = 1.6;
+    controls.minDistance = 6;
+    controls.maxDistance = 20;
+    controls.minPolarAngle = Math.PI * 0.2;
+    controls.maxPolarAngle = Math.PI * 0.55;
 
-    scene.add(new THREE.HemisphereLight(0xffe9d6, 0x2a1446, 0.9));
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
-    key.position.set(4, 8, 5);
-    key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    scene.add(key);
+    scene.add(new THREE.AmbientLight(0x5058a0, 0.7));
+    const front = new THREE.DirectionalLight(0xaab6ff, 0.9);
+    front.position.set(-3, 4, 6);
+    scene.add(front);
+    const rim = new THREE.DirectionalLight(0xc49cff, 1.4);
+    rim.position.set(4, 3, -5);
+    scene.add(rim);
+
+    // ---------- Painted textures (drawn on 2D canvases) ----------
+    function canvas(w, h) {
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      return [c, c.getContext("2d")];
+    }
+    function toTexture(c) {
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return t;
+    }
+    function star(g, x, y, r, color) {
+      g.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const rr = i % 2 ? r * 0.45 : r;
+        g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+      }
+      g.closePath();
+      g.fillStyle = color;
+      g.fill();
+    }
+
+    // Galaxy watercolor wrapped around the cake. Everything is drawn 3x (x-W, x, x+W) so the seam is invisible.
+    function cakeSideTexture() {
+      const W = 2048, H = 640;
+      const [c, g] = canvas(W, H);
+      g.fillStyle = "#0c1238";
+      g.fillRect(0, 0, W, H);
+      const wrap = (fn) => [-W, 0, W].forEach((dx) => fn(dx));
+
+      const blues = ["#1a237e", "#283593", "#3949ab", "#1e3a8a", "#4c1d95", "#312e81", "#0b1033", "#5b6cff", "#2563eb", "#07091f"];
+      for (let i = 0; i < 320; i++) {
+        const x = rand(0, W), y = rand(0, H), r = rand(40, 240), col = pick(blues), a = rand(0.15, 0.5);
+        wrap((dx) => {
+          const gr = g.createRadialGradient(x + dx, y, 0, x + dx, y, r);
+          gr.addColorStop(0, col + Math.round(a * 255).toString(16).padStart(2, "0"));
+          gr.addColorStop(1, col + "00");
+          g.fillStyle = gr;
+          g.fillRect(x + dx - r, y - r, r * 2, r * 2);
+        });
+      }
+      // light-blue brush strokes
+      g.lineCap = "round";
+      for (let i = 0; i < 40; i++) {
+        const x = rand(0, W), y = rand(0, H), len = rand(60, 220), ang = rand(-0.6, 0.6);
+        g.strokeStyle = `rgba(${pick(["122,162,255", "160,140,255", "90,200,255"])},${rand(0.08, 0.25)})`;
+        g.lineWidth = rand(10, 40);
+        wrap((dx) => {
+          g.beginPath();
+          g.moveTo(x + dx, y);
+          g.quadraticCurveTo(x + dx + len / 2, y + rand(-30, 30), x + dx + Math.cos(ang) * len, y + Math.sin(ang) * len);
+          g.stroke();
+        });
+      }
+      // gold splatter clusters
+      for (let k = 0; k < 16; k++) {
+        const cx = rand(0, W), cy = rand(0, H);
+        for (let i = 0; i < 70; i++) {
+          const x = cx + (Math.random() + Math.random() - 1) * 120, y = cy + (Math.random() + Math.random() - 1) * 70;
+          const r = Math.random() < 0.85 ? rand(1, 3.5) : rand(4, 8);
+          g.fillStyle = `rgba(${pick(["246,196,83", "255,217,138", "240,170,60"])},${rand(0.5, 1)})`;
+          wrap((dx) => { g.beginPath(); g.arc(x + dx, y, r, 0, Math.PI * 2); g.fill(); });
+        }
+        // a few gold streaks
+        g.strokeStyle = `rgba(246,196,83,${rand(0.35, 0.7)})`;
+        g.lineWidth = rand(2, 6);
+        wrap((dx) => {
+          g.beginPath();
+          g.moveTo(cx + dx - 80, cy + rand(-20, 20));
+          g.quadraticCurveTo(cx + dx, cy + rand(-40, 40), cx + dx + rand(60, 140), cy + rand(-30, 30));
+          g.stroke();
+        });
+      }
+      // painted confetti dots
+      for (let i = 0; i < 110; i++) {
+        const x = rand(0, W), y = rand(0, H), r = Math.random() < 0.7 ? rand(5, 12) : rand(13, 24), col = pick(DOT_COLORS);
+        g.fillStyle = col;
+        g.globalAlpha = rand(0.7, 0.95);
+        wrap((dx) => { g.beginPath(); g.ellipse(x + dx, y, r, r * rand(0.85, 1), rand(0, 3), 0, Math.PI * 2); g.fill(); });
+      }
+      g.globalAlpha = 1;
+      // stars
+      for (let i = 0; i < 46; i++) {
+        const x = rand(0, W), y = rand(0, H), r = rand(7, 22), col = pick(["#f6c453", "#ffd98a", "#ffffff"]);
+        wrap((dx) => star(g, x + dx, y, r, col));
+      }
+      return toTexture(c);
+    }
+
+    // Creamy lavender top with swirling strokes
+    function cakeTopTexture() {
+      const S = 1024;
+      const [c, g] = canvas(S, S);
+      const gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+      gr.addColorStop(0, "#f6f2ff");
+      gr.addColorStop(0.7, "#ddd6fb");
+      gr.addColorStop(1, "#b9b2ee");
+      g.fillStyle = gr;
+      g.fillRect(0, 0, S, S);
+      g.lineCap = "round";
+      for (let i = 0; i < 46; i++) {
+        const r = rand(60, S / 2 - 20), a0 = rand(0, Math.PI * 2), len = rand(0.6, 2.2);
+        g.strokeStyle = pick(["rgba(242,195,91,", "rgba(243,168,208,", "rgba(169,156,240,", "rgba(255,255,255,", "rgba(120,150,255,"]) + rand(0.3, 0.75) + ")";
+        g.lineWidth = rand(3, 16);
+        g.beginPath();
+        g.arc(S / 2, S / 2, r, a0, a0 + len);
+        g.stroke();
+      }
+      for (let i = 0; i < 160; i++) {
+        const a = rand(0, Math.PI * 2), r = Math.sqrt(Math.random()) * (S / 2 - 10);
+        g.fillStyle = `rgba(246,196,83,${rand(0.4, 1)})`;
+        g.beginPath();
+        g.arc(S / 2 + Math.cos(a) * r, S / 2 + Math.sin(a) * r, rand(1, 4), 0, Math.PI * 2);
+        g.fill();
+      }
+      return toTexture(c);
+    }
+
+    function candleTexture() {
+      const [c, g] = canvas(128, 512);
+      g.fillStyle = "#f8e9f4";
+      g.fillRect(0, 0, 128, 512);
+      g.strokeStyle = "#ee9cc8";
+      g.lineWidth = 14;
+      for (let y = -128; y < 640; y += 64) {
+        g.beginPath(); g.moveTo(0, y); g.lineTo(128, y + 64); g.stroke();
+      }
+      return toTexture(c);
+    }
+
+    function glowTexture(stops) {
+      const [c, g] = canvas(256, 256);
+      const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+      stops.forEach(([o, col]) => gr.addColorStop(o, col));
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 256, 256);
+      return toTexture(c);
+    }
+
+    function flameTexture() {
+      const [c, g] = canvas(128, 256);
+      // teardrop: a radial gradient squashed into a flame shape
+      g.save();
+      g.translate(64, 170);
+      g.scale(1, 2.1);
+      const gr = g.createRadialGradient(0, 0, 0, 0, 0, 60);
+      gr.addColorStop(0, "rgba(255,255,240,1)");
+      gr.addColorStop(0.35, "rgba(255,226,140,1)");
+      gr.addColorStop(0.7, "rgba(255,150,50,.7)");
+      gr.addColorStop(1, "rgba(255,90,20,0)");
+      g.fillStyle = gr;
+      g.beginPath();
+      g.moveTo(0, -78);
+      g.bezierCurveTo(40, -30, 48, 20, 0, 40);
+      g.bezierCurveTo(-48, 20, -40, -30, 0, -78);
+      g.fill();
+      g.restore();
+      return toTexture(c);
+    }
+
+    function sparkleTexture() {
+      const [c, g] = canvas(128, 128);
+      g.translate(64, 64);
+      g.fillStyle = "#fff";
+      g.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4, r = i % 2 ? 9 : 62;
+        g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      g.closePath();
+      g.fill();
+      return toTexture(c);
+    }
 
     // ---------- Cake ----------
     const cake = new THREE.Group();
     scene.add(cake);
 
-    const mat = (color, rough = 0.6) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const R = 1.55, H = 2.8, baseY = 0.14;
+    const sideTex = cakeSideTexture();
+    const topTex = cakeTopTexture();
+
+    const sideMat = new THREE.MeshStandardMaterial({ map: sideTex, emissive: 0xffffff, emissiveMap: sideTex, emissiveIntensity: 0.55, roughness: 0.85 });
+    const topMat = new THREE.MeshStandardMaterial({ map: topTex, emissive: 0xffffff, emissiveMap: topTex, emissiveIntensity: 0.25, roughness: 0.6 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 96, 1), [sideMat, topMat, sideMat]);
+    body.position.y = baseY + H / 2;
+    cake.add(body);
+
+    // soft creamy rim around the top edge
+    const rimCream = new THREE.Mesh(
+      new THREE.TorusGeometry(R - 0.02, 0.08, 16, 96),
+      new THREE.MeshStandardMaterial({ color: 0xe9e4ff, emissive: 0x8f86d8, emissiveIntensity: 0.35, roughness: 0.5 })
+    );
+    rimCream.rotation.x = Math.PI / 2;
+    rimCream.position.y = baseY + H;
+    cake.add(rimCream);
 
     // plate
-    const plate = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 2.9, 0.15, 64), mat(0xf4f1ee, 0.3));
-    plate.position.y = 0.075;
-    plate.receiveShadow = true;
-    cake.add(plate);
+    const plate = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.55, 2.35, 0.14, 96),
+      new THREE.MeshStandardMaterial({ color: 0xcfd2f5, emissive: 0x2a2d6a, emissiveIntensity: 0.5, roughness: 0.25, metalness: 0.1 })
+    );
+    plate.position.y = 0.07;
+    scene.add(plate);
+    const plateGlow = new THREE.Mesh(
+      new THREE.TorusGeometry(2.5, 0.012, 8, 128),
+      new THREE.MeshBasicMaterial({ color: 0xffe3a6, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending })
+    );
+    plateGlow.rotation.x = Math.PI / 2;
+    plateGlow.position.y = 0.145;
+    scene.add(plateGlow);
 
-    // tiers: radius, height, sponge color, frosting color
-    const tiers = [
-      { r: 2.3, h: 1.2, body: 0xf7c6d9, drip: 0xffffff },
-      { r: 1.6, h: 1.0, body: 0xfff1d6, drip: 0xff8fb8 },
-    ];
-    let y = 0.15;
-    tiers.forEach((t) => {
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(t.r, t.r, t.h, 64), mat(t.body));
-      body.position.y = y + t.h / 2;
-      body.castShadow = body.receiveShadow = true;
-      cake.add(body);
+    // candle
+    const topY = baseY + H;
+    const candleH = 0.95;
+    const candle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.085, 0.09, candleH, 24),
+      new THREE.MeshStandardMaterial({ map: candleTexture(), emissive: 0xff9ad0, emissiveIntensity: 0.25, roughness: 0.5 })
+    );
+    candle.position.y = topY + candleH / 2;
+    scene.add(candle);
+    const wick = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.1, 6), new THREE.MeshBasicMaterial({ color: 0x1a1410 }));
+    wick.position.y = topY + candleH + 0.04;
+    scene.add(wick);
 
-      // frosting cap
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(t.r + 0.04, t.r + 0.04, 0.12, 64), mat(t.drip, 0.35));
-      cap.position.y = y + t.h;
-      cap.castShadow = true;
-      cake.add(cap);
+    const flameY = topY + candleH + 0.2;
+    const flameGroup = new THREE.Group();
+    flameGroup.position.y = flameY;
+    scene.add(flameGroup);
+    const sprite = (map, sx, sy, opacity) => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+      s.scale.set(sx, sy, 1);
+      return s;
+    };
+    const flame = sprite(flameTexture(), 0.22, 0.44, 1);
+    const glowSmall = sprite(glowTexture([[0, "rgba(255,200,110,.8)"], [0.3, "rgba(255,150,60,.25)"], [1, "rgba(255,120,40,0)"]]), 0.9, 0.9, 0.8);
+    const halo = sprite(glowTexture([[0, "rgba(255,190,120,.3)"], [0.35, "rgba(200,140,255,.06)"], [1, "rgba(120,100,255,0)"]]), 2.6, 2.6, 0.5);
+    flameGroup.add(halo, glowSmall, flame);
+    const candleLight = new THREE.PointLight(0xffb060, 5, 7, 2);
+    candleLight.position.y = flameY;
+    scene.add(candleLight);
 
-      // drips around the edge
-      const drips = 28;
-      for (let i = 0; i < drips; i++) {
-        const a = (i / drips) * Math.PI * 2;
-        const len = 0.18 + Math.random() * 0.35;
-        const drip = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, len, 4, 8), mat(t.drip, 0.35));
-        drip.position.set(Math.cos(a) * (t.r + 0.02), y + t.h - len / 2, Math.sin(a) * (t.r + 0.02));
-        cake.add(drip);
-      }
-
-      // piped frosting balls along the bottom edge
-      const beads = Math.round(t.r * 16);
-      for (let i = 0; i < beads; i++) {
-        const a = (i / beads) * Math.PI * 2;
-        const bead = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12), mat(t.drip, 0.35));
-        bead.position.set(Math.cos(a) * t.r, y + 0.06, Math.sin(a) * t.r);
-        cake.add(bead);
-      }
-      y += t.h;
-    });
-    const topY = y + 0.06;
-
-    // sprinkles on top
-    const sprinkleColors = [0xff4d6d, 0x4dd2ff, 0xffd84d, 0x7cff6b, 0xb07cff];
-    const sprinkleGeo = new THREE.CapsuleGeometry(0.025, 0.1, 2, 6);
-    for (let i = 0; i < 90; i++) {
-      const s = new THREE.Mesh(sprinkleGeo, mat(sprinkleColors[i % sprinkleColors.length], 0.4));
-      const r = Math.sqrt(Math.random()) * 1.45, a = Math.random() * Math.PI * 2;
-      s.position.set(Math.cos(a) * r, topY + 0.02, Math.sin(a) * r);
-      s.rotation.set(Math.PI / 2, 0, Math.random() * Math.PI);
-      cake.add(s);
-    }
-
-    // strawberries on the lower tier ledge
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + 0.2;
-      const berry = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 12), mat(0xe8233f, 0.3));
-      berry.rotation.x = Math.PI;
-      berry.position.set(Math.cos(a) * 1.95, 0.15 + 1.2 + 0.2, Math.sin(a) * 1.95);
-      cake.add(berry);
-    }
-
-    // ---------- Candles ----------
-    const candles = [];
-    const candleColors = [0x6ecbff, 0xff8fb8, 0xffd84d, 0x9cff8f, 0xc49cff];
-    const flameMat = new THREE.MeshBasicMaterial({ color: 0xffc04d, transparent: true, opacity: 0.95 });
-    candleColors.forEach((c, i) => {
-      const a = (i / candleColors.length) * Math.PI * 2;
-      const g = new THREE.Group();
-      g.position.set(Math.cos(a) * 0.9, topY, Math.sin(a) * 0.9);
-
-      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.8, 16), mat(c, 0.4));
-      stick.position.y = 0.4;
-      stick.castShadow = true;
-      g.add(stick);
-
-      const wick = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.1, 6), mat(0x222222));
-      wick.position.y = 0.85;
-      g.add(wick);
-
-      const flame = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), flameMat.clone());
-      flame.scale.set(1, 2, 1);
-      flame.position.y = 1.0;
-      g.add(flame);
-
-      const light = new THREE.PointLight(0xffa640, 0.6, 4, 2);
-      light.position.y = 1.05;
-      g.add(light);
-
-      cake.add(g);
-      candles.push({ flame, light, phase: Math.random() * 10 });
+    // ---------- Swirling light ribbons ----------
+    const ribbonMat = (a, b, c, offset, alpha) => new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, cA: { value: new THREE.Color(a) }, cB: { value: new THREE.Color(b) }, cC: { value: new THREE.Color(c) }, uOffset: { value: offset }, uAlpha: { value: alpha } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
+      fragmentShader: `
+        uniform float uTime, uOffset, uAlpha; uniform vec3 cA, cB, cC; varying vec2 vUv;
+        void main(){
+          float u = vUv.x;
+          vec3 col = mix(cA, cB, smoothstep(0., .55, u));
+          col = mix(col, cC, smoothstep(.55, 1., u));
+          float fade = smoothstep(0., .18, u) * smoothstep(1., .7, u);
+          float flow = .55 + .45 * sin(u * 26. - uTime * 2.4 + uOffset);
+          gl_FragColor = vec4(col * (.35 + .55 * flow), fade * uAlpha);
+        }`,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
 
-    // ---------- Confetti ----------
-    const confetti = [];
-    const confGeo = new THREE.PlaneGeometry(0.08, 0.14);
-    function burstConfetti() {
-      for (let i = 0; i < 220; i++) {
-        const m = new THREE.Mesh(confGeo, new THREE.MeshBasicMaterial({
-          color: sprinkleColors[i % sprinkleColors.length], side: THREE.DoubleSide,
-        }));
-        m.position.set(0, topY + 1, 0);
-        const a = Math.random() * Math.PI * 2, speed = 2 + Math.random() * 4;
-        m.userData.v = new THREE.Vector3(Math.cos(a) * speed * 0.5, 4 + Math.random() * 4, Math.sin(a) * speed * 0.5);
-        m.userData.spin = new THREE.Vector3(Math.random() * 8, Math.random() * 8, 0);
-        scene.add(m);
-        confetti.push(m);
+    const ribbons = [];
+    function addRibbon({ radius, y, tilt, turns, start, rise, colors, speed }) {
+      const group = new THREE.Group();
+      // a few thin parallel strands read as one painted brush stroke
+      for (let s = 0; s < 5; s++) {
+        const dr = (s - 2) * 0.035, dy = (s - 2) * 0.03;
+        const pts = [];
+        for (let i = 0; i <= 160; i++) {
+          const t = i / 160, th = start + t * turns * Math.PI * 2;
+          const r = radius + dr + Math.sin(t * Math.PI) * 0.25;
+          pts.push(new THREE.Vector3(Math.cos(th) * r, y + dy + tilt * Math.sin(th + 0.6) + rise * t, Math.sin(th) * r));
+        }
+        const curve = new THREE.CatmullRomCurve3(pts);
+        const mesh = new THREE.Mesh(
+          new THREE.TubeGeometry(curve, 320, s === 2 ? 0.022 : rand(0.006, 0.014), 6, false),
+          ribbonMat(...colors, rand(0, 6), s === 2 ? 0.95 : rand(0.35, 0.6))
+        );
+        group.add(mesh);
       }
+      group.userData.speed = speed;
+      scene.add(group);
+      ribbons.push(group);
+    }
+    addRibbon({ radius: 2.55, y: 3.6, tilt: 0.75, turns: 1.25, start: 0, rise: 0.2, colors: [0xffc15e, 0xb9a6ff, 0xff9fd0], speed: 0.35 });
+    addRibbon({ radius: 2.15, y: 1.8, tilt: 0.45, turns: 1.1, start: 2, rise: -0.3, colors: [0xa99cf0, 0xff9fd0, 0xfff1c8], speed: -0.28 });
+    addRibbon({ radius: 2.45, y: 0.45, tilt: 0.22, turns: 0.9, start: 4, rise: 0.1, colors: [0x6f8dff, 0xc9b6ff, 0xffc15e], speed: 0.22 });
+
+    // ---------- Bokeh dots + gold dust ----------
+    function pointCloud(count, place, sizeFn, colorFn, blending) {
+      const pos = new Float32Array(count * 3), col = new Float32Array(count * 3), size = new Float32Array(count), phase = new Float32Array(count);
+      const c = new THREE.Color();
+      for (let i = 0; i < count; i++) {
+        const p = place();
+        pos.set([p.x, p.y, p.z], i * 3);
+        c.set(colorFn());
+        col.set([c.r, c.g, c.b], i * 3);
+        size[i] = sizeFn();
+        phase[i] = rand(0, 100);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute("aColor", new THREE.BufferAttribute(col, 3));
+      geo.setAttribute("aSize", new THREE.BufferAttribute(size, 1));
+      geo.setAttribute("aPhase", new THREE.BufferAttribute(phase, 1));
+      const mat = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 }, uScale: { value: 1 } },
+        vertexShader: `
+          attribute vec3 aColor; attribute float aSize, aPhase;
+          uniform float uTime, uScale; varying vec3 vColor; varying float vAlpha;
+          void main(){
+            vec3 p = position;
+            p.y += sin(uTime * .5 + aPhase) * .18;
+            p.x += cos(uTime * .35 + aPhase) * .12;
+            vec4 mv = modelViewMatrix * vec4(p, 1.);
+            gl_Position = projectionMatrix * mv;
+            gl_PointSize = aSize * uScale / -mv.z;
+            vColor = aColor;
+            vAlpha = .7 + .3 * sin(uTime * 1.7 + aPhase * 3.);
+          }`,
+        fragmentShader: `
+          varying vec3 vColor; varying float vAlpha;
+          void main(){
+            float d = length(gl_PointCoord - .5);
+            if (d > .5) discard;
+            float a = smoothstep(.5, .4, d);
+            vec3 col = vColor * (.85 + .35 * smoothstep(.45, .0, d));
+            gl_FragColor = vec4(col, a * vAlpha);
+          }`,
+        transparent: true, depthWrite: false, blending,
+      });
+      const pts = new THREE.Points(geo, mat);
+      scene.add(pts);
+      return pts;
     }
 
-    // ---------- Interaction ----------
-    let lit = true;
+    // dots float around the cake, denser in the upper-left like the painting
+    const bokeh = pointCloud(190, () => {
+      if (Math.random() < 0.35) return new THREE.Vector3(rand(-5.5, -1.5), rand(3, 6.5), rand(-2, 1.5));
+      const a = rand(0, Math.PI * 2), r = rand(2.4, 5.5);
+      return new THREE.Vector3(Math.cos(a) * r, rand(-0.5, 6.8), Math.sin(a) * r * 0.8);
+    }, () => (Math.random() < 0.85 ? rand(0.04, 0.11) : rand(0.14, 0.26)), () => pick(DOT_COLORS), THREE.NormalBlending);
+
+    const dust = pointCloud(700, () => {
+      const a = rand(0, Math.PI * 2), r = rand(1.2, 5);
+      return new THREE.Vector3(Math.cos(a) * r, rand(0, 5.5), Math.sin(a) * r);
+    }, () => rand(0.012, 0.035), () => pick(["#c9a24a", "#b8913c", "#d8d0f0", "#8f80c8"]), THREE.AdditiveBlending);
+
+    const sparkleTex = sparkleTexture();
+    const sparkles = [];
+    for (let i = 0; i < 14; i++) {
+      const s = sprite(sparkleTex, 0.25, 0.25, 0.9);
+      const a = rand(0, Math.PI * 2), r = rand(2.5, 6);
+      s.position.set(Math.cos(a) * r, rand(0.5, 6), Math.sin(a) * r);
+      s.userData = { base: rand(0.12, 0.3), phase: rand(0, 10) };
+      scene.add(s);
+      sparkles.push(s);
+    }
+
+    // ---------- Post: bloom glow ----------
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.5, 0.82);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+
+    function updatePointScale() {
+      const s = (renderer.domElement.height) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+      bokeh.material.uniforms.uScale.value = s;
+      dust.material.uniforms.uScale.value = s;
+    }
+    updatePointScale();
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      composer.setSize(innerWidth, innerHeight);
+      updatePointScale();
+    });
+
+    // ---------- Make a wish: tap the cake ----------
+    let lit = true, flameLevel = 1;
     const hint = document.getElementById("hint");
     const relight = document.getElementById("relight");
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let downAt = null;
+    const burst = [];
+    const dotTex = glowTexture([[0, "rgba(255,255,255,1)"], [0.55, "rgba(255,255,255,1)"], [0.62, "rgba(255,255,255,0)"], [1, "rgba(255,255,255,0)"]]);
 
     renderer.domElement.addEventListener("pointerdown", (e) => { downAt = { x: e.clientX, y: e.clientY }; });
     renderer.domElement.addEventListener("pointerup", (e) => {
       if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 6 || !lit) return;
       pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
-      if (raycaster.intersectObject(cake, true).length) blowOut();
+      if (raycaster.intersectObjects([body, candle, rimCream], false).length) makeWish();
     });
 
-    function blowOut() {
+    function makeWish() {
       lit = false;
-      candles.forEach((c) => { c.flame.visible = false; c.light.intensity = 0; });
-      burstConfetti();
       hint.style.opacity = 0;
-      relight.style.display = "block";
+      for (let i = 0; i < 160; i++) {
+        const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex, color: pick(DOT_COLORS), transparent: true, depthWrite: false }));
+        const sz = rand(0.06, 0.2);
+        s.scale.set(sz, sz, 1);
+        s.position.set(0, flameY, 0);
+        const a = rand(0, Math.PI * 2), sp = rand(1, 4);
+        s.userData.v = new THREE.Vector3(Math.cos(a) * sp, rand(2, 6), Math.sin(a) * sp);
+        s.userData.life = rand(2.5, 4);
+        scene.add(s);
+        burst.push(s);
+      }
+      setTimeout(() => (relight.style.display = "block"), 1200);
     }
     relight.addEventListener("click", () => {
       lit = true;
-      candles.forEach((c) => { c.flame.visible = true; });
       relight.style.display = "none";
-      hint.style.opacity = .75;
-    });
-
-    addEventListener("resize", () => {
-      camera.aspect = innerWidth / innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(innerWidth, innerHeight);
     });
 
     // ---------- Loop ----------
@@ -255,24 +524,35 @@
       const dt = Math.min(clock.getDelta(), 0.05);
       const t = clock.elapsedTime;
 
-      if (lit) candles.forEach((c) => {
-        const f = 1 + Math.sin(t * 18 + c.phase) * 0.08 + Math.sin(t * 7 + c.phase) * 0.06;
-        c.flame.scale.set(f, 2 * f, f);
-        c.light.intensity = 0.5 + 0.15 * f;
-      });
+      cake.rotation.y += dt * 0.25;     // the cake slowly turns
+      candle.rotation.y = cake.rotation.y;
+      ribbons.forEach((r) => { r.rotation.y += dt * r.userData.speed; r.children.forEach((m) => (m.material.uniforms.uTime.value = t)); });
+      bokeh.rotation.y += dt * 0.04;
+      dust.rotation.y -= dt * 0.06;
+      bokeh.material.uniforms.uTime.value = t;
+      dust.material.uniforms.uTime.value = t;
+      sparkles.forEach((s) => { const k = s.userData.base * (0.6 + 0.4 * Math.sin(t * 2 + s.userData.phase)); s.scale.set(k, k, 1); });
 
-      for (let i = confetti.length - 1; i >= 0; i--) {
-        const m = confetti[i];
-        m.userData.v.y -= 6 * dt;
-        m.userData.v.multiplyScalar(0.99);
-        m.position.addScaledVector(m.userData.v, dt);
-        m.rotation.x += m.userData.spin.x * dt;
-        m.rotation.y += m.userData.spin.y * dt;
-        if (m.position.y < -2) { scene.remove(m); m.material.dispose(); confetti.splice(i, 1); }
+      flameLevel += ((lit ? 1 : 0) - flameLevel) * Math.min(1, dt * (lit ? 2 : 8));
+      const f = 1 + Math.sin(t * 17) * 0.06 + Math.sin(t * 6.3) * 0.05;
+      flame.scale.set(0.22 * f * flameLevel, 0.44 * (2 - f) * flameLevel, 1);
+      flame.position.x = Math.sin(t * 3.1) * 0.012;
+      glowSmall.material.opacity = 0.8 * flameLevel * f;
+      halo.material.opacity = 0.5 * flameLevel;
+      candleLight.intensity = 5 * flameLevel * f;
+
+      for (let i = burst.length - 1; i >= 0; i--) {
+        const s = burst[i], u = s.userData;
+        u.v.y -= 3 * dt;
+        u.v.multiplyScalar(0.985);
+        s.position.addScaledVector(u.v, dt);
+        u.life -= dt;
+        s.material.opacity = Math.min(1, u.life);
+        if (u.life <= 0) { scene.remove(s); s.material.dispose(); burst.splice(i, 1); }
       }
 
       controls.update();
-      renderer.render(scene, camera);
+      composer.render();
     });
   </script>
 </body>
